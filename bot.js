@@ -3,13 +3,12 @@ const TelegramBot = require("node-telegram-bot-api");
 const fs = require("fs");
 const path = require("path");
 
-// Bot token va admin ID
+// Bot token va guruh ID
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
-const adminChatId = process.env.ADMIN_CHAT_ID;
-const groupChatId = "-1002355839077"; // Yangi guruh ID'si
+const groupChatId = "-1002355839077"; // Guruh ID
 
-// Fayllar yo‘llari
-const pdfPath = path.join(__dirname, "malumot.pdf");
+// Fayl yo‘li
+const pdfPath = path.join(__dirname, "malumot_kichik.pdf"); // PDF fayl yo‘li
 
 // Foydalanuvchi ma'lumotlarini vaqtinchalik saqlash
 const userInfo = {};
@@ -18,33 +17,25 @@ const userInfo = {};
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
 
-  // 3 ta xabarni yuborish
+  // Boshlang‘ich xabar
   bot.sendMessage(
     chatId,
-    "Assalomu Aleykum. Botga xush kelibsiz! 🎉\nDrBeeze - 100% tabiiy va halol mahsulot 🌿.",
-    { parse_mode: "Markdown" }
+    "Assalomu Aleykum! DrBeeze botiga xush kelibsiz! 🌿\nIsmingizni kiriting 👇:"
   );
-  bot.sendMessage(
-    chatId,
-    "Video qo’llanmani olish uchun *ismingizni* kiriting 👇  📩:",
-    { parse_mode: "MarkdownV2" }
-  );
-
-  // Foydalanuvchining ismini so‘rash
-  userInfo[chatId] = { step: "name" };
+  userInfo[chatId] = { step: "name" }; // Bosqichni saqlash
 });
 
 // Xabarlarni boshqarish
 bot.on("message", (msg) => {
   const chatId = msg.chat.id;
 
-  // Foydalanuvchi ism kiritayotganda
+  // Ismni kiritish
   if (userInfo[chatId]?.step === "name") {
     userInfo[chatId].name = msg.text.trim();
     userInfo[chatId].step = "phone";
 
     // Telefon raqamini so‘rash
-    bot.sendMessage(chatId, "Telefon raqamingizni yuboring (format: +998901234567):", {
+    bot.sendMessage(chatId, "Telefon raqamingizni kiriting (format: +998901234567):", {
       reply_markup: {
         keyboard: [[{ text: "📞 Kontaktni yuborish", request_contact: true }]],
         resize_keyboard: true,
@@ -54,25 +45,47 @@ bot.on("message", (msg) => {
     return;
   }
 
-  // Foydalanuvchi telefon raqamini kiritayotganda
+  // Telefon raqamini yoki kontaktni qabul qilish
   if (userInfo[chatId]?.step === "phone") {
     if (msg.contact) {
-      // Telefon raqami kontaktdan olinganda
       userInfo[chatId].phone = msg.contact.phone_number;
-      userInfo[chatId].step = "done";
-
-      // Foydalanuvchiga fayllarni yuborish
-      sendFilesToUser(chatId);
     } else if (/^\+998\d{9}$/.test(msg.text.trim())) {
-      // Telefon raqami matn sifatida to'g'ri formatda kiritilganida
       userInfo[chatId].phone = msg.text.trim();
-      userInfo[chatId].step = "done";
-
-      // Foydalanuvchiga fayllarni yuborish
-      sendFilesToUser(chatId);
     } else {
       bot.sendMessage(chatId, "Iltimos, telefon raqamingizni to‘g‘ri formatda kiriting.");
+      return;
     }
+
+    userInfo[chatId].step = "done";
+
+    // Ma'lumotlarni guruhga yuborish
+    const { name, phone } = userInfo[chatId];
+    bot.sendMessage(
+      groupChatId,
+      `📢 *Yangi foydalanuvchi ma'lumotlari:*\n\n👤 *Ismi:* ${name}\n📱 *Telefon:* ${phone}`,
+      { parse_mode: "Markdown" }
+    );
+
+    // YouTube havolasi yuborish
+    bot.sendMessage(
+      chatId,
+      "Mana video havolasi: https://www.youtube.com/watch?v=eQUW4Mk9lxo&feature=youtu.be"
+    );
+
+    // PDF yuborilishi haqida xabar
+    bot.sendMessage(chatId, "Video va PDF fayl yuborilmoqda, iltimos kuting... ⏳");
+
+    // PDF yuborish
+    bot.sendDocument(chatId, fs.createReadStream(pdfPath)).then(() => {
+      // Buyurtma berish tugmasini chiqarish
+      bot.sendMessage(chatId, "Buyurtma berish uchun quyidagi tugmani bosing 📦:", {
+        reply_markup: {
+          keyboard: [["📦 Buyurtma berish"]],
+          resize_keyboard: true,
+        },
+      });
+    });
+
     return;
   }
 
@@ -80,56 +93,20 @@ bot.on("message", (msg) => {
   if (msg.text === "📦 Buyurtma berish" && userInfo[chatId]?.step === "done") {
     const { name, phone } = userInfo[chatId];
 
-    // Guruhga ma'lumotlarni yuborish
+    // Guruhga buyurtma ma'lumotlarini yuborish
     bot.sendMessage(
       groupChatId,
-      `📦 *Yangi buyurtma:*\n\n👤 *Ismi:* ${name}\n📞 *Telefon:* ${phone}`,
+      `📦 *Yangi buyurtma:*\n\n👤 *Ismi:* ${name}\n📱 *Telefon:* ${phone}`,
       { parse_mode: "Markdown" }
     )
       .then(() => {
         bot.sendMessage(chatId, "Buyurtmangiz qabul qilindi! Tez orada bog‘lanamiz. 😊");
       })
-      .catch((error) => {
-        console.error("Guruhga xabar yuborishda xatolik:", error.message);
-        bot.sendMessage(chatId, "Xatolik yuz berdi. Iltimos, keyinroq qaytadan urinib ko'ring.");
+      .catch((err) => {
+        console.error("Buyurtmani guruhga yuborishda xatolik:", err.message);
+        bot.sendMessage(chatId, "Xatolik yuz berdi. Iltimos, keyinroq urinib ko‘ring.");
       });
   }
 });
 
-// Foydalanuvchiga fayllarni yuborish funksiyasi
-function sendFilesToUser(chatId) {
-  bot.sendMessage(chatId, "Rahmat! Mana sizga video va PDF 📑:");
-  bot.sendMessage(chatId, "YouTube videosini tomosha qiling: https://www.youtube.com/watch?v=eQUW4Mk9lxo");
-  bot.sendDocument(chatId, fs.createReadStream(pdfPath));
-
-  // Buyurtma berish tugmasini ko‘rsatish
-  bot.sendMessage(chatId, "Buyurtma berish uchun quyidagi tugmani bosing 📦:", {
-    reply_markup: {
-      keyboard: [["📦 Buyurtma berish"]],
-      resize_keyboard: true,
-    },
-  });
-}
-
-// Logs papkasini tekshirish va yaratish
-const logsDir = path.join(__dirname, "../logs");
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir);
-}
-
-// Kontaktlarni logga yozish funksiyasi
-const logContact = (contact) => {
-  const logPath = path.join(logsDir, "contact_log.txt");
-  const logMessage = `Ism: ${contact.first_name}, Telefon: ${contact.phone_number}\n`;
-
-  // Faylga yozish
-  fs.appendFile(logPath, logMessage, (err) => {
-    if (err) {
-      console.error("Log yozishda xatolik yuz berdi:", err);
-    }
-  });
-};
-
-module.exports = { logContact };
-
-console.log("Bot ishga tushdi33!");
+console.log("Bot ishga tushdwi!");
